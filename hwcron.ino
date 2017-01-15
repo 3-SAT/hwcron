@@ -395,8 +395,6 @@ void scmd_alarms_status(){
 
 };
 
-
-
 void scmd_set_alarm(){
 
   char *arg;
