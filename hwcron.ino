@@ -1,19 +1,20 @@
 /*
-TODO:
 
 Hardware Cron
+--------------------------------
 
-Alarms in EEPROM
+This program is for turning on/off devices over time daily (HH:MM:SS).
 
-Commands for:
-- default: ? for help
-- ?: print help
-- set time: settime <YY> <MM> <DD> <HH> <MM> <SS> 
-- print alarms: print
-- set alarm: set <alarm_id> <HH> <MM> <SS> <pin> <timeout>
-- enable alarm: ena <alarm_id>
-- disable alarm: dis <alarm_id> 
-- postpone alarm: post <alarm> <[-]sec>
+Written in Arduino environment 1.8.0
+Additional libraries: 
+
+External:
+- RtcDS3231 - url: 
+- SerialCommand - url: 
+
+Boundled with Arduino environment:
+- EEPROM
+- Wire
 
 */
 
@@ -109,6 +110,7 @@ void saveConfig() {
     EEPROM.write(CONFIG_START + t, *((char*)&config_storage + t));
 }
 
+RtcDateTime restart_time;
 
 void setup () 
 {
@@ -118,7 +120,7 @@ void setup ()
     Serial.print(F(__DATE__));
     Serial.print(F(":"));
     Serial.println(F(__TIME__));
-    Serial.print(F("version: "));
+    Serial.print(F("config version: "));
     Serial.print(CONFIG_VERSION_1);
     Serial.print(',');
     Serial.print(CONFIG_VERSION_2);
@@ -147,6 +149,7 @@ void setup ()
 		rtc_setup();
 
 		// pin setup
+		restart_time = Rtc.GetDateTime();
 
     pinMode(LED_BUILTIN, OUTPUT);
 
@@ -289,20 +292,36 @@ void scmd_unrecognized(){
 }
 
 void scmd_help(){
+  Serial.println(); 
+  Serial.print(F("Hardware Cron, compiled on: "));
+  Serial.print(F(__DATE__));
+  Serial.print(F(":"));
+  Serial.println(F(__TIME__));
+  Serial.print(F("config version: "));
+  Serial.print(CONFIG_VERSION_1);
+  Serial.print(',');
+  Serial.print(CONFIG_VERSION_2);
+  Serial.print(',');
+  Serial.println(CONFIG_VERSION_3);
+
+  Serial.print(F("Running since: ")); 
+  printDateTime(restart_time);
+  Serial.println(); 
+  Serial.println(); 
+
   RtcDateTime now = Rtc.GetDateTime();
   Serial.println(F("Commands:")); 
   Serial.print(F("settime "));
   printDateTime(now);
-  Serial.println(); 
+  Serial.println(F("#sets RTC time")); 
 
 
   Serial.println(F("print #print alarms")); 
   Serial.println(F("status #print alarms status")); 
   Serial.println(F("temp #print temperature")); 
   Serial.println(F("time #print time")); 
-  Serial.println(F("set <alarm_id> <HH> <MM> <SS> <pin> <timeout> #set alarm")); 
-  Serial.println(F("setpin <pin_id> <val> #set pin")); 
-
+  Serial.println(F("set <alarm_id> <HH> <MM> <SS> [<pin> <timeout>] #set alarm")); 
+  //Serial.println(F("setpin <pin_id> <val> #set pin")); 
   Serial.println(F("ena <alarm_id> # enable alarm")); 
   Serial.println(F("dis <alarm_id> # disable alarm")); 
   Serial.println(F("post <alarm_id> <[-]time_sec> # postpone_alarm by seconds")); 
@@ -482,15 +501,15 @@ void scmd_postpone_alarm(){
   char *arg;
 
   uint8_t alarm_id;
-	int16_t timeout;
+	int32_t timeout;
 
   arg = SCmd.next(); if (arg != NULL) alarm_id = atol(arg); else {print_err(); return;};
   arg = SCmd.next(); if (arg != NULL) timeout = atol(arg); else {print_err(); return;};
 
   if(alarm_id > MAX_ALARMS) {print_err(); return;};
 
-  if((int)alarm_state[alarm_id].timeout + timeout < 0 ){
-		alarm_state[alarm_id].timeout = 0;
+  if((int)alarm_state[alarm_id].timeout + timeout < 1 ){
+		alarm_state[alarm_id].timeout = 1;
 		print_ok();	return;
 	} 
 
@@ -528,9 +547,10 @@ void rtc_setup(){
     RtcDateTime now = Rtc.GetDateTime();
     if (now < compiled) 
     {
-        Serial.println(F("RTC is older than compile time!  (Updating DateTime)"));
+        Serial.println(F("RTC is older than compile time!  (Updating DateTime to compile time)"));
         Rtc.SetDateTime(compiled);
     }
+/*
     else if (now > compiled) 
     {
         Serial.println(F("RTC is newer than compile time. (this is expected)"));
@@ -539,7 +559,7 @@ void rtc_setup(){
     {
         Serial.println(F("RTC is the same as compile time! (not expected but all is fine)"));
     }
-
+*/
     Rtc.Enable32kHzPin(false);
     Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone); 
 
