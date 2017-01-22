@@ -5,6 +5,11 @@ Hardware Cron
 
 This program is for turning on/off devices over time daily (HH:MM:SS).
 
+Alaram sets pin on, and timeout.
+When timeout goes to zero, pin is going off.
+When another alarm goes on in time of timeout.
+Timeout is extended or 
+
 Written in Arduino environment 1.8.0
 Additional libraries: 
 
@@ -15,6 +20,11 @@ External:
 Boundled with Arduino environment:
 - EEPROM
 - Wire
+
+todo:
+ver: 0,0,3 alarm_timeout-> pin_timeout
+
+
 
 */
 
@@ -43,6 +53,36 @@ typedef struct {
   int8_t s;
 } hms_t;
 
+
+#define MAX_PINS 4
+
+typedef struct {
+  uint8_t pin;
+  uint8_t initial; 
+  uint8_t inverted;
+} availble_pins_t;
+
+// setup pins 
+availble_pins_t availble_pins[MAX_PINS] = {
+  {10,1,1},
+  {11,1,1},
+  {12,1,1},
+  {13,1,1}
+};
+
+// pin state
+typedef struct {
+  int32_t timeout;
+} pin_state_t;
+
+pin_state_t pin_state[MAX_PINS] = {{0},{0},{0},{0}};
+
+
+#define CONFIG_START 32
+#define CONFIG_VERSION_1 0
+#define CONFIG_VERSION_2 0
+#define CONFIG_VERSION_3 3
+
 typedef struct {
   int8_t h;
   int8_t m;
@@ -51,33 +91,6 @@ typedef struct {
   int32_t timeout;
   uint8_t pin;
 } alarm_config_t;
-
-
-typedef struct {
-  int32_t timeout; 
-} alarm_state_t;
-
-alarm_state_t alarm_state[MAX_ALARMS];
-
-typedef struct {
-  uint8_t pin;
-  uint8_t initial; 
-  uint8_t inverted; 
-} availble_pins_t;
-
-// setup pins 
-#define MAX_PINS 4
-availble_pins_t availble_pins[MAX_PINS] = {
-	{6,1,1},
-	{7,1,1},
-	{8,1,1},
-	{9,1,1}
-};
-
-#define CONFIG_START 32
-#define CONFIG_VERSION_1 0
-#define CONFIG_VERSION_2 0
-#define CONFIG_VERSION_3 2
 
 struct StoreStruct {
   uint8_t version[3];
@@ -138,12 +151,12 @@ void setup ()
 		// SCmd.addCommand("setpin",scmd_setpin);
 
 		SCmd.addCommand("print",scmd_print_alarms);
-		SCmd.addCommand("status",scmd_alarms_status);
+		SCmd.addCommand("status",scmd_pins_status);
 		SCmd.addCommand("set",scmd_set_alarm);
 
 		SCmd.addCommand("ena",scmd_enable_alarm);
 		SCmd.addCommand("dis",scmd_disable_alarm);
-		SCmd.addCommand("post",scmd_postpone_alarm);
+		SCmd.addCommand("post",scmd_postpone_pintimeout);
 
     Rtc.Begin();
 		rtc_setup();
@@ -151,9 +164,9 @@ void setup ()
 		// pin setup
 		restart_time = Rtc.GetDateTime();
 
-    pinMode(LED_BUILTIN, OUTPUT);
+    //pinMode(LED_BUILTIN, OUTPUT);
 
-	  for (uint8_t t = 0; t < MAX_PINS; t++){
+	  for (int8_t t = 0; t < MAX_PINS; t++){
 	    pinMode(availble_pins[t].pin, OUTPUT);
 	    digitalWrite(availble_pins[t].pin, ((availble_pins[t].initial == 1) ? HIGH : LOW));
 	  }
@@ -168,7 +181,7 @@ void loop ()
 	    delay(10); //ms
 		}
 
-		digitalWrite(LED_BUILTIN, LOW);
+		//digitalWrite(LED_BUILTIN, LOW);
     delay(100); //ms
 
 		static hms_t last_checked = {-1,0,0};
@@ -198,72 +211,100 @@ void loop ()
     Serial.print(current.s);
     Serial.println();
 */
+    // process alarms
+    for(uint8_t i = 0; i < MAX_PINS; ++i){
 
-		// process alarms
-    for(uint8_t i = 0; i < MAX_ALARMS; ++i){
+      // timeout the timeput
+      if (pin_state[i].timeout > 0){
+        pin_state[i].timeout --;
 
-    	// process if enabled
-    	if(config_storage.alarms[i].enabled != true) continue;
-
-	    // timeout the timeput
-    	if (alarm_state[i].timeout > 0){
-	      digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  	    // digitalWrite(GSM_POWER_PIN, LOW);    // turn the LED off by making the voltage LOW
-				alarm_state[i].timeout --;
-
-				if (alarm_state[i].timeout == 0){
-	      	set_pin(config_storage.alarms[i].pin, 0);
+        if (pin_state[i].timeout == 0){
+          set_pin(availble_pins[i].pin, 0);
           Serial.print(F("OFF: "));
           Serial.print(i);
           Serial.println();
-  			} else {
+        } else {
+          set_pin(availble_pins[i].pin, 1);
           Serial.print(F("TO: "));
-          Serial.print(i);
+          Serial.print(availble_pins[i].pin);
           Serial.print(F(":"));
-          Serial.print(alarm_state[i].timeout);
+          Serial.print(pin_state[i].timeout);
           Serial.println();
         }
-    	}  
+        
+      }  
 
-	  	// fire alarm
-    	if (HMS_GEQ(current,config_storage.alarms[i]) and !HMS_GEQ(last_checked,config_storage.alarms[i]) ){
+    }
+
+    // process alarms
+    for(uint8_t i = 0; i < MAX_ALARMS; ++i){
+      // process if enabled
+      if(config_storage.alarms[i].enabled != true) continue;
+
+      // fire alarm
+      if (HMS_GEQ(current,config_storage.alarms[i]) and !HMS_GEQ(last_checked,config_storage.alarms[i]) ){
+
+        // print
         printDateTime(now);
         Serial.println();
 
-	      Serial.print(F("ON: "));
-	      Serial.print(i);
-	      Serial.print(' ');
-	      Serial.print(config_storage.alarms[i].h);
-	      Serial.print(':');
-	      Serial.print(config_storage.alarms[i].m);
-	      Serial.print(':');
-	      Serial.print(config_storage.alarms[i].s);
-	      Serial.println();      
-	      alarm_state[i].timeout = config_storage.alarms[i].timeout;
-	      // fire on
-	      set_pin(config_storage.alarms[i].pin, 1);
+        Serial.print(F("ON: "));
+        Serial.print(i);
+        Serial.print(' ');
+        Serial.print(config_storage.alarms[i].h);
+        Serial.print(':');
+        Serial.print(config_storage.alarms[i].m);
+        Serial.print(':');
+        Serial.print(config_storage.alarms[i].s);
+        Serial.print(F(" pin: "));
+        Serial.print(config_storage.alarms[i].pin);
 
+        {
+          int8_t pin_idx = find_pin_index(config_storage.alarms[i].pin);
+
+          Serial.print(F(" pin_idx:"));
+          Serial.print(pin_idx);
+
+          if (pin_idx >= 0) {
+            // fire on
+
+            if (config_storage.alarms[i].timeout > pin_state[pin_idx].timeout){
+              pin_state[pin_idx].timeout = config_storage.alarms[i].timeout;
+            }
+
+          } else {
+            Serial.print(F(" pin_error"));
+          }
+
+          Serial.println();      
+
+        }
 	    }
 
 	  }
 
+
     last_checked = current;
+}
+
+int8_t find_pin_index(uint8_t pin){
+  for (int8_t p = 0; p < MAX_PINS; ++p)
+  {
+    if (availble_pins[p].pin == pin) return p;
+  }
+  return -1;
 }
 
 void set_pin(uint8_t pin, uint8_t pin_out){
 
 	// set pin
-  for (int p = 0; p < MAX_PINS; ++p)
-  {
-  	if(availble_pins[p].pin == pin){
+  int8_t pin_idx = find_pin_index(pin);
+  if (pin_idx <0) return ;
 
-  		if(availble_pins[p].inverted == 1)
-				{digitalWrite(availble_pins[p].pin, ((pin_out == 0) ? HIGH : LOW));}
-			else 
-				{digitalWrite(availble_pins[p].pin, ((pin_out == 1) ? HIGH : LOW));}
-  		break;
-  	}
-  }
+	if(availble_pins[pin_idx].inverted == 1)
+		{digitalWrite(availble_pins[pin_idx].pin, ((pin_out == 0) ? HIGH : LOW));}
+	else 
+		{digitalWrite(availble_pins[pin_idx].pin, ((pin_out == 1) ? HIGH : LOW));}
 }
 
 
@@ -313,18 +354,17 @@ void scmd_help(){
   Serial.println(F("Commands:")); 
   Serial.print(F("settime "));
   printDateTime(now);
-  Serial.println(F("#sets RTC time")); 
+  Serial.println(F(" #sets RTC time")); 
 
 
-  Serial.println(F("print #print alarms")); 
-  Serial.println(F("status #print alarms status")); 
+  Serial.println(F("print #print alarms ")); 
+  Serial.println(F("status #print pins status")); 
   Serial.println(F("temp #print temperature")); 
   Serial.println(F("time #print time")); 
   Serial.println(F("set <alarm_id> <HH> <MM> <SS> [<pin> <timeout>] #set alarm")); 
-  //Serial.println(F("setpin <pin_id> <val> #set pin")); 
   Serial.println(F("ena <alarm_id> # enable alarm")); 
   Serial.println(F("dis <alarm_id> # disable alarm")); 
-  Serial.println(F("post <alarm_id> <[-]time_sec> # postpone_alarm by seconds")); 
+  Serial.println(F("post <pin> <[-]time_sec> # postpone_pin by seconds")); 
 
 }
 
@@ -395,20 +435,14 @@ void scmd_print_alarms(){
 
 };
 
-void scmd_alarms_status(){
+void scmd_pins_status(){
 
-	Serial.println(F("Alarms status:"));
-	for (int i = 0; i < MAX_ALARMS; ++i)
+	Serial.println(F("Pins status:"));
+	for (uint8_t i = 0; i < MAX_PINS; ++i)
 	{
-		Serial.print(i);
-		Serial.print(F("| "));	
-
-		Serial.print(F("e:"));	
-		Serial.print(config_storage.alarms[i].enabled);	
-
+		Serial.print(availble_pins[i].pin);
 		Serial.print(F(" t:"));
-		Serial.print(alarm_state[i].timeout);	
-
+		Serial.print(pin_state[i].timeout);	
 		Serial.println();
 	}
 
@@ -496,31 +530,33 @@ void scmd_disable_alarm(){
   print_ok();
 }
 
-void scmd_postpone_alarm(){
+void scmd_postpone_pintimeout(){
 
   char *arg;
 
-  uint8_t alarm_id;
+  uint8_t pin;
 	int32_t timeout;
 
-  arg = SCmd.next(); if (arg != NULL) alarm_id = atol(arg); else {print_err(); return;};
+  arg = SCmd.next(); if (arg != NULL) pin = atol(arg); else {print_err(); return;};
   arg = SCmd.next(); if (arg != NULL) timeout = atol(arg); else {print_err(); return;};
 
-  if(alarm_id > MAX_ALARMS) {print_err(); return;};
+  int8_t pin_idx = find_pin_index(pin);
+  if (pin_idx <0) return ;
+  
 
-  if((int)alarm_state[alarm_id].timeout + timeout < 1 ){
-		alarm_state[alarm_id].timeout = 1;
+  if(pin_state[pin_idx].timeout + timeout < 1 ){
+		pin_state[pin_idx].timeout = 1;
 		print_ok();	return;
 	} 
 
-  if (alarm_state[alarm_id].timeout == 0){
-    set_pin(config_storage.alarms[alarm_id].pin, 1);
-		alarm_state[alarm_id].timeout = timeout;
+  if (pin_state[pin_idx].timeout == 0){
+    set_pin(config_storage.alarms[pin_idx].pin, 1);
+		pin_state[pin_idx].timeout = timeout;
 	  print_ok();
 		return;
 	}
 
-  alarm_state[alarm_id].timeout += timeout;
+  pin_state[pin_idx].timeout += timeout;
 
   print_ok();
 
