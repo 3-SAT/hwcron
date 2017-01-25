@@ -21,14 +21,37 @@ Boundled with Arduino environment:
 - EEPROM
 - Wire
 
-todo:
-ver: 0,0,3 alarm_timeout-> pin_timeout
+Example commands for setup:
 
+set 0 7 0 0 10 150 
+set 1 8 0 0 10 300 
+set 2 9 0 0 10 400 
+set 3 10 0 0 10 500 
+set 4 11 0 0 10 600 
+set 5 12 0 0 10 700 
+set 6 13 0 0 10 600 
+set 7 14 0 0 10 400 
+set 8 15 20 0 10 300 
+set 9 16 30 0 10 200 
 
+ena 0
+ena 1
+ena 2
+ena 3
+ena 4
+ena 5
+ena 6
+ena 7
+ena 8
+ena 9
+
+settime 2017 01 24 23 59 59
+settime 2017 01 24 17 51 00
 
 */
 
 #define MAX_ALARMS 10
+#define DEFAULT_TIMEOUT (5*60)
 
 #include <avr/pgmspace.h>
 
@@ -60,19 +83,21 @@ typedef struct {
   uint8_t pin;
   uint8_t initial; 
   uint8_t inverted;
+  uint8_t control_pin;
 } availble_pins_t;
 
 // setup pins 
 availble_pins_t availble_pins[MAX_PINS] = {
-  {10,1,1},
-  {11,1,1},
-  {12,1,1},
-  {13,1,1}
+  {10,1,1,9},
+  {11,1,1,0},
+  {12,1,1,0},
+  {13,1,1,0}
 };
 
 // pin state
 typedef struct {
   int32_t timeout;
+  uint8_t last_control_pin_state;
 } pin_state_t;
 
 pin_state_t pin_state[MAX_PINS] = {{0},{0},{0},{0}};
@@ -156,7 +181,9 @@ void setup ()
 
 		SCmd.addCommand("ena",scmd_enable_alarm);
 		SCmd.addCommand("dis",scmd_disable_alarm);
-		SCmd.addCommand("post",scmd_postpone_pintimeout);
+	  SCmd.addCommand("post",scmd_postpone_pintimeout);
+    SCmd.addCommand("on",scmd_postpone_pintimeout);
+    SCmd.addCommand("off",scmd_pinoff);
 
     Rtc.Begin();
 		rtc_setup();
@@ -167,6 +194,9 @@ void setup ()
     //pinMode(LED_BUILTIN, OUTPUT);
 
 	  for (int8_t t = 0; t < MAX_PINS; t++){
+      if (availble_pins[t].control_pin > 0 ) 
+        pinMode(availble_pins[t].control_pin, INPUT_PULLUP);
+
 	    pinMode(availble_pins[t].pin, OUTPUT);
 	    digitalWrite(availble_pins[t].pin, ((availble_pins[t].initial == 1) ? HIGH : LOW));
 	  }
@@ -214,6 +244,19 @@ void loop ()
     // process alarms
     for(uint8_t i = 0; i < MAX_PINS; ++i){
 
+      if (availble_pins[i].control_pin > 0){
+
+        if( digitalRead(availble_pins[i].control_pin) == LOW ){
+          if( pin_state[i].last_control_pin_state == HIGH ){
+            if( pin_state[i].timeout < DEFAULT_TIMEOUT ){
+              pin_state[i].timeout = DEFAULT_TIMEOUT;
+            }
+          }
+        }
+
+        pin_state[i].last_control_pin_state = digitalRead(availble_pins[i].control_pin);
+      }
+
       // timeout the timeput
       if (pin_state[i].timeout > 0){
         pin_state[i].timeout --;
@@ -225,11 +268,13 @@ void loop ()
           Serial.println();
         } else {
           set_pin(availble_pins[i].pin, 1);
-          Serial.print(F("TO: "));
-          Serial.print(availble_pins[i].pin);
-          Serial.print(F(":"));
-          Serial.print(pin_state[i].timeout);
-          Serial.println();
+          if (pin_state[i].timeout < 10 || (pin_state[i].timeout % 10) == 0 ){
+            Serial.print(F("TO: "));
+            Serial.print(availble_pins[i].pin);
+            Serial.print(F(":"));
+            Serial.print(pin_state[i].timeout);
+            Serial.println();
+          }
         }
         
       }  
@@ -365,6 +410,8 @@ void scmd_help(){
   Serial.println(F("ena <alarm_id> # enable alarm")); 
   Serial.println(F("dis <alarm_id> # disable alarm")); 
   Serial.println(F("post <pin> <[-]time_sec> # postpone_pin by seconds")); 
+  Serial.println(F("on <pin> <[-]time_sec> # on the pin ")); 
+  Serial.println(F("off <pin> # off the pin")); 
 
 }
 
@@ -537,26 +584,50 @@ void scmd_postpone_pintimeout(){
   uint8_t pin;
 	int32_t timeout;
 
+  timeout = DEFAULT_TIMEOUT;
+
   arg = SCmd.next(); if (arg != NULL) pin = atol(arg); else {print_err(); return;};
-  arg = SCmd.next(); if (arg != NULL) timeout = atol(arg); else {print_err(); return;};
+  arg = SCmd.next(); if (arg != NULL) timeout = atol(arg);
 
   int8_t pin_idx = find_pin_index(pin);
-  if (pin_idx <0) return ;
+  if (pin_idx < 0) {print_err(); return;}
   
-
   if(pin_state[pin_idx].timeout + timeout < 1 ){
 		pin_state[pin_idx].timeout = 1;
-		print_ok();	return;
+		print_ok();	
+    return;
 	} 
 
   if (pin_state[pin_idx].timeout == 0){
     set_pin(config_storage.alarms[pin_idx].pin, 1);
 		pin_state[pin_idx].timeout = timeout;
-	  print_ok();
-		return;
+	  print_ok(); 
+    return;
 	}
 
   pin_state[pin_idx].timeout += timeout;
+
+  print_ok();
+
+}
+
+void scmd_pinoff(){
+
+  char *arg;
+
+  uint8_t pin;
+
+  arg = SCmd.next(); if (arg != NULL) pin = atol(arg); else {print_err(); return;};
+
+  int8_t pin_idx = find_pin_index(pin);
+  if (pin_idx < 0) {print_err(); return;}
+  
+
+  if(pin_state[pin_idx].timeout > 0 ){
+    pin_state[pin_idx].timeout = 1;
+    print_ok(); 
+    return;
+  } 
 
   print_ok();
 
