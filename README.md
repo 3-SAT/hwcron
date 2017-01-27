@@ -1,6 +1,6 @@
 # Hardware Cron (hwcron)
 
-![HwCron](/img/hwcron_prototype.jpg?raw=true "Hardware Cron prototype")
+![HwCron](/doc/hwcron_prototype.jpg?raw=true "Hardware Cron prototype")
 
 Arduino based daily scheduler.
 Uses RTC (DS3231) at alarms to switch relays on for specified time.
