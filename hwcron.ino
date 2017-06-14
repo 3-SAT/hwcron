@@ -23,16 +23,16 @@ Boundled with Arduino environment:
 
 Example commands for setup:
 
-set 0 7 0 0 10 150 
-set 1 8 0 0 10 300 
-set 2 9 0 0 10 400 
-set 3 10 0 0 10 500 
+set 0 7 0 0 10 600 
+set 1 8 0 0 10 600 
+set 2 9 0 0 10 600 
+set 3 10 0 0 10 600 
 set 4 11 0 0 10 600 
-set 5 12 0 0 10 700 
+set 5 12 0 0 10 600 
 set 6 13 0 0 10 600 
-set 7 14 0 0 10 400 
-set 8 15 20 0 10 300 
-set 9 16 30 0 10 200 
+set 7 14 0 0 10 600 
+set 8 16 0 0 10 600 
+set 9 18 0 0 10 600 
 
 ena 0
 ena 1
@@ -47,6 +47,9 @@ ena 9
 
 settime 2017 01 24 23 59 59
 settime 2017 01 24 17 51 00
+
+post 0 99999
+post 1 99999
 
 */
 
