@@ -5,7 +5,7 @@ Hardware Cron
 
 This program is for turning on/off devices over time daily (HH:MM:SS).
 
-Alaram sets pin on, and timeout.
+Alarm sets pin on, and timeout.
 When timeout goes to zero, pin is going off.
 When another alarm goes on in time of timeout.
 Timeout is extended or 
@@ -17,7 +17,7 @@ External:
 - RtcDS3231 - url: 
 - SerialCommand - url: 
 
-Boundled with Arduino environment:
+Bundled with Arduino environment:
 - EEPROM
 - Wire
 
@@ -105,11 +105,19 @@ typedef struct {
 
 pin_state_t pin_state[MAX_PINS] = {{0},{0},{0},{0}};
 
+//NEW functions **************************************************************************************************************************************************
+typedef struct {
+  uint8_t pin;
+  uint8_t pin_power;
+} power_conf;
+
+#define POWER_PINS 1//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
 #define CONFIG_START 32
 #define CONFIG_VERSION_1 0
 #define CONFIG_VERSION_2 0
-#define CONFIG_VERSION_3 3
+#define CONFIG_VERSION_3 4//changeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddddd
 
 typedef struct {
   int8_t h;
@@ -123,6 +131,8 @@ typedef struct {
 struct StoreStruct {
   uint8_t version[3];
   alarm_config_t alarms[MAX_ALARMS];
+
+  power_conf power_pins[POWER_PINS];
 
 } config_storage = {
   {CONFIG_VERSION_1,CONFIG_VERSION_2,CONFIG_VERSION_3}
@@ -142,7 +152,11 @@ void loadConfig() {
 			config_storage.alarms[t].s = 0;
 			config_storage.alarms[t].pin = 0;
 			config_storage.alarms[t].timeout = 0;
-  	}
+    }
+    for(unsigned int t=0; t < POWER_PINS; t++){//new config !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      config_storage.power_pins[t].pin = 0;
+      config_storage.power_pins[t].pin_power = 0;
+    }
   }
 }
 
@@ -188,6 +202,8 @@ void setup ()
     SCmd.addCommand("on",scmd_postpone_pintimeout);
     SCmd.addCommand("off",scmd_pinoff);
 
+    SCmd.addCommand("pinpower", scmd_pin_power);
+
     Rtc.Begin();
 		rtc_setup();
 
@@ -201,9 +217,11 @@ void setup ()
         pinMode(availble_pins[t].control_pin, INPUT_PULLUP);
 
 	    pinMode(availble_pins[t].pin, OUTPUT);
-	    digitalWrite(availble_pins[t].pin, ((availble_pins[t].initial == 1) ? HIGH : LOW));
+	    digitalWrite(availble_pins[t].pin, ((availble_pins[t].initial == 1) ?  HIGH : LOW));////////////////////////////////////////////////////////////////////////////////////////////
 	  }
-   
+   for(int8_t t=0; t < POWER_PINS; t++){
+     analogWrite(config_storage.power_pins[t].pin, config_storage.power_pins[t].pin_power);//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   }
 }
 
 void loop () 
@@ -375,6 +393,23 @@ void printDateTime(const RtcDateTime& dt)
 void print_err(){	Serial.println(F("Error"));}
 
 void print_ok(){	Serial.println(F("Ok"));}
+
+void scmd_pin_power(){//new functions !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  char *arg;
+  int8_t array_entry = 0;
+  int8_t pin_number = 0;
+  uint8_t power_set = 0;
+  arg = SCmd.next(); if (arg != NULL)  array_entry = atol(arg); else {print_err(); return;};
+  arg = SCmd.next(); if (arg != NULL)  power_set = atol(arg); else {print_err(); return;};
+  if(array_entry >= 0 && array_entry < POWER_PINS){
+    arg = SCmd.next(); if (arg != NULL)  pin_number = atol(arg); else {pin_number = config_storage.power_pins[array_entry].pin;};
+    config_storage.power_pins[array_entry].pin = pin_number;
+    config_storage.power_pins[array_entry].pin_power = power_set;
+    saveConfig();
+    analogWrite(pin_number, power_set);
+  }
+  else{print_err(); return;}
+}
 
 void scmd_unrecognized(){
   Serial.println(F("? for help")); 
