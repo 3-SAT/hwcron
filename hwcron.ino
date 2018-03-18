@@ -400,7 +400,7 @@ void scmd_pin_power(){//new functions !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   int8_t pin_number = 0;
   uint8_t power_set = 0;
   arg = SCmd.next(); if (arg != NULL)  array_entry = atol(arg); else {print_err(); return;};
-  arg = SCmd.next(); if (arg != NULL)  power_set = atol(arg); else {print_err(); return;};
+  arg = SCmd.next(); if (arg != NULL)  power_set = ((atol(arg) * 100)/255); else {print_err(); return;};	//wypisuje w procentach
   if(array_entry >= 0 && array_entry < POWER_PINS){
     arg = SCmd.next(); if (arg != NULL)  pin_number = atol(arg); else {pin_number = config_storage.power_pins[array_entry].pin;};
     config_storage.power_pins[array_entry].pin = pin_number;
